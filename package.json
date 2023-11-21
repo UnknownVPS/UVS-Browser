@@ -1,0 +1,37 @@
+{
+  "name": "UVS_Browser",
+  "version": "0.0.1",
+  "description": "Electron based Browser for increasing browsing speed while including support modern day tools.",
+  "homepage": "https://github.com/unknownpersonog",
+  "main": "main.js",
+  "scripts": {
+    "test": "electron .",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "com.unknownvps.uvsbrowser",
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage",
+        "apk"
+      ],
+      "icon": null,
+      "category": "internet"
+    }
+  },
+  "author": "UnknownVPS <admin@unknownvps.eu.org> (unknownpersonog)",
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@cliqz/adblocker-electron": "^1.26.12",
+    "cross-fetch": "^4.0.0",
+    "electron-prompt": "^1.7.0",
+    "https": "^1.0.0",
+    "v8-compile-cache": "^2.4.0"
+  },
+  "devDependencies": {
+    "electron": "^27.1.0",
+    "electron-builder": "^24.6.4",
+    "yarn": "^1.22.21"
+  }
+}
