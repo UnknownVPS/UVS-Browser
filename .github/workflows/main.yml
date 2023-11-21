@@ -22,7 +22,7 @@ jobs:
           npm i --include-dev
       - name: Build
         run: |
-          npm run build
+          npx electron-builder --publish=never
       - name: "Release" 
         run: |
           echo "done!"
