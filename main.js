@@ -1,39 +1,56 @@
 const { app, BrowserWindow, Menu, dialog, session } = require("electron");
 const prompt = require("electron-prompt");
 require("v8-compile-cache"); // Use V8 Engine code cache
-const { ElectronBlocker } = require("@cliqz/adblocker-electron");
+const { ElectronBlocker, fullLists } = require("@cliqz/adblocker-electron");
+const ProgressBar = require("electron-progressbar");
+const Store = require("electron-store");
 const fetch = require("cross-fetch"); // required 'fetch'
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
 let win;
 const listFilePath = path.join(app.getPath("userData")) + "/easylist.txt";
+const privacyFilePath = path.join(app.getPath("userData")) + "/easyprivacy.txt";
 const stateFilePath =
   path.join(app.getPath("userData")) + "/adblockerstate.txt";
-let listURL = "https://easylist.to/easylist/easylist.txt";
-// Function to download the list
-function downloadList() {
-  https
-    .get(listURL, (res) => {
-      let data = "";
-      res.on("data", (chunk) => {
-        data += chunk;
-      });
-      res.on("end", () => {
-        fs.writeFileSync(listFilePath, data);
-      });
-    })
-    .on("error", (err) => {
-      if (!fs.existsSync(listFilePath)) {
-        dialog.showErrorBox(
-          "Error",
-          "No existing list found. Please connect to the internet.",
-        );
-      }
-    });
-}
+let easyListURL = "https://easylist.to/easylist/easylist.txt";
+let easyPrivacyURL = "https://easylist.to/easylist/easyprivacy.txt";
+const store = new Store();
 
-downloadList();
+// Function to download a list
+async function downloadList(url, filePath) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        let data = "";
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          fs.writeFileSync(filePath, data);
+          resolve();
+        });
+        res.on("error", (err) => {
+          if (fs.existsSync(filePath)) {
+            resolve(); // If file exists, resolve the promise
+          } else {
+            reject(new Error("File not downloaded")); // If file does not exist, reject the promise
+          }
+        });
+      })
+      .on("error", (err) => {
+        if (fs.existsSync(filePath)) {
+          resolve(); // If file exists, resolve the promise
+        } else {
+          reject(
+            new Error(
+              "Please Connect to Internet! No adblock files were found!",
+            ),
+          ); // If file does not exist, reject the promise
+        }
+      });
+  });
+}
 
 function loadState() {
   try {
@@ -51,20 +68,49 @@ function saveState(state) {
   fs.writeFileSync(stateFilePath, stateJSON);
 }
 
+function showDownloads() {
+  const files = downloadedFiles.map((file) => file.label).join("\n");
+  const progress = downloads
+    .map((download) => {
+      const totalBytes = download.getTotalBytes();
+      const receivedBytes = download.getReceivedBytes();
+      const progress = receivedBytes / totalBytes;
+      const speed = receivedBytes / (download.getStartTime() / 1000); // bytes per second
+      return `${download.getFilename()}: ${Math.round(
+        progress * 100,
+      )}% complete, ${Math.round(speed)} B/s`;
+    })
+    .join("\n");
+  dialog.showMessageBox({
+    type: "info",
+    title: "Download Progress",
+    message: "Here is the progress of your downloads:\n\n" + progress,
+    buttons: ["OK"],
+  });
+}
+
 let { adblockerEnabled } = loadState();
 
 async function createWindow() {
   async function blockerX() {
+    let blocker;
     try {
+      // Download the lists
+      await downloadList(easyListURL, listFilePath);
+      await downloadList(easyPrivacyURL, privacyFilePath);
+
       const listData = await fs.readFileSync(listFilePath, "utf-8");
+      const privacyData = await fs.readFileSync(privacyFilePath, "utf-8");
       blocker = await ElectronBlocker.parse(listData);
     } catch (err) {
-      dialog.showErrorBox("Error", "Failed to load the adblocker.");
+      dialog.showErrorBox("Error", err.message);
       console.log(err);
+      return;
     }
     return blocker;
   }
-  let blocker = blockerX().blocker;
+
+  let blocker = await blockerX();
   prompt({
     title: "Enter URL",
     label: "URL:",
@@ -119,6 +165,16 @@ async function createWindow() {
                 accelerator: "CmdOrCtrl+R",
                 click() {
                   win.reload();
+                },
+              },
+              {
+                label: "Toggle Full Screen",
+                accelerator:
+                  process.platform === "darwin" ? "Ctrl+Command+F" : "F11", // Shortcut key
+                click: () => {
+                  win.setAutoHideMenuBar(win.isFullScreen());
+                  win.setMenuBarVisibility(!win.isFullScreen());
+                  win.setFullScreen(!win.isFullScreen());
                 },
               },
               {
@@ -185,7 +241,21 @@ async function createWindow() {
               },
             ],
           },
-          // Other menu items
+          {
+            label: "Download",
+            submenu: [
+              {
+                label: "Show Download History",
+                click() {
+                  dialog.showMessageBox({
+                    message:
+                      "Download history: " +
+                      JSON.stringify(store.get("downloadHistory")),
+                  });
+                },
+              },
+            ],
+          },
 
           {
             label: "Help",
@@ -207,6 +277,71 @@ async function createWindow() {
 
         const menu = Menu.buildFromTemplate(template);
         Menu.setApplicationMenu(menu);
+        win.webContents.session.on(
+          "will-download",
+          (event, item, webContents) => {
+            downloadItem = item; // Store the download item
+
+            // Create a new progress bar
+            let progressBar = new ProgressBar({
+              indeterminate: false,
+              text: "Preparing download...",
+              detail: "Wait...",
+            });
+            progressBar
+              .on("completed", function () {
+                console.info(`completed...`);
+                progressBar.detail = "Task completed. Exiting...";
+              })
+              .on("aborted", function (value) {
+                console.info(`aborted... ${value}`);
+              })
+              .on("progress", function (value) {
+                progressBar.detail = `Downloaded ${value} out of ${
+                  progressBar.getOptions().maxValue
+                }...\nDownload ${value}% Complete! Due to technical difficulies pausing is not possible atm.`;
+              });
+
+            item.on("updated", (event, state) => {
+              if (state === "interrupted") {
+                console.log("Download is interrupted but can be resumed");
+              } else if (state === "progressing") {
+                if (item.isPaused()) {
+                  console.log("Download is paused");
+                } else {
+                  // Update the progress bar value
+                  let totalBytes = item.getTotalBytes();
+                  if (totalBytes > 0) {
+                    let progress = (item.getReceivedBytes() / totalBytes) * 100;
+                    progressBar.value = progress;
+                  } else {
+                    // If totalBytes is not available, switch to indeterminate mode
+                    progressBar.options.indeterminate = true;
+                  }
+                  console.log(`Received bytes: ${item.getReceivedBytes()}`);
+                }
+              }
+            });
+
+            item.once("done", (event, state) => {
+              if (state === "completed") {
+                console.log("Download successfully");
+                progressBar.setCompleted();
+              } else {
+                console.log(`Download failed: ${state}`);
+                progressBar.close();
+              }
+
+              let downloadHistory = store.get("downloadHistory") || [];
+              downloadHistory.push({
+                url: item.getURL(),
+                filename: item.getFilename(),
+                fileSize: item.getTotalBytes(),
+              });
+              store.set("downloadHistory", downloadHistory);
+            });
+          },
+        );
       }
     })
     .catch(console.error);
