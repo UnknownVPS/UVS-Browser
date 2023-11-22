@@ -1,20 +1,22 @@
 {
   "name": "UVS_Browser",
-  "version": "0.0.1",
+  "productName": "UVS_Browser",
+  "version": "0.0.2",
   "description": "Electron based Browser for increasing browsing speed while including support modern day tools.",
   "homepage": "https://github.com/unknownpersonog",
   "main": "main.js",
   "scripts": {
     "test": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "build": {
     "appId": "com.unknownvps.uvsbrowser",
     "linux": {
       "target": [
-        "deb",
-        "AppImage",
-        "apk"
+        "deb"
       ],
       "icon": null,
       "category": "internet"
@@ -25,13 +27,22 @@
   "dependencies": {
     "@cliqz/adblocker-electron": "^1.26.12",
     "cross-fetch": "^4.0.0",
+    "electron-progressbar": "^2.1.0",
     "electron-prompt": "^1.7.0",
+    "electron-squirrel-startup": "^1.0.0",
+    "electron-store": "^8.1.0",
     "https": "^1.0.0",
     "v8-compile-cache": "^2.4.0"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.1.0",
+    "@electron-forge/maker-deb": "^7.1.0",
+    "@electron-forge/maker-rpm": "^7.1.0",
+    "@electron-forge/maker-squirrel": "^7.1.0",
+    "@electron-forge/maker-zip": "^7.1.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.1.0",
     "electron": "^27.1.0",
-    "electron-builder": "^24.6.4",
+    "electron-packager": "^17.1.2",
     "yarn": "^1.22.21"
   }
 }
