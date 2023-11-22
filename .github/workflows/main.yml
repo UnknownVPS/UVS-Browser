@@ -23,7 +23,7 @@ jobs:
           npm i --include-dev
       - name: Build
         run: |
-          npx electron-builder --publish=never
+          npm run make
       - name: "Release" 
         run: |
           echo "done!"
@@ -35,6 +35,4 @@ jobs:
           prerelease: true
           title: "Development Build"
           files: |
-            dist/*.deb
-            dist/*.apk
-            dist/*.AppImage
+            out/make/*/*/*
