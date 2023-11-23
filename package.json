@@ -18,8 +18,7 @@
       "target": [
         "deb"
       ],
-      "icon": null,
-      "category": "internet"
+      "icon": null
     }
   },
   "author": "UnknownVPS <admin@unknownvps.eu.org> (unknownpersonog)",
@@ -31,7 +30,6 @@
     "electron-prompt": "^1.7.0",
     "electron-squirrel-startup": "^1.0.0",
     "electron-store": "^8.1.0",
-    "https": "^1.0.0",
     "v8-compile-cache": "^2.4.0"
   },
   "devDependencies": {
@@ -42,6 +40,7 @@
     "@electron-forge/maker-zip": "^7.1.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.1.0",
     "electron": "^27.1.0",
+    "electron-builder": "^24.6.4",
     "electron-forge-maker-appimage": "github:Marcus10110/electron-forge-maker-appimage",
     "electron-packager": "^17.1.2",
     "yarn": "^1.22.21"
