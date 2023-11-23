@@ -20,7 +20,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - name: Install Dependencies
         run: |
-          npm i --include-dev
+          sudo apt update && sudo apt install wine64 && npm i --include-dev
       - name: Build
         run: |
           npm run make && npx electron-builder -w
