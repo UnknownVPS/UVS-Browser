@@ -5,105 +5,25 @@ const { ElectronBlocker, fullLists } = require("@cliqz/adblocker-electron");
 const ProgressBar = require("electron-progressbar");
 const Store = require("electron-store");
 const fetch = require("cross-fetch"); // required 'fetch'
-const fs = require("fs");
-const path = require("path");
-const https = require("https");
+const fs = require('fs').promises;
 let win;
-const listFilePath = path.join(app.getPath("userData")) + "/easylist.txt";
-const privacyFilePath = path.join(app.getPath("userData")) + "/easyprivacy.txt";
-const stateFilePath =
-  path.join(app.getPath("userData")) + "/adblockerstate.txt";
-let easyListURL = "https://easylist.to/easylist/easylist.txt";
-let easyPrivacyURL = "https://easylist.to/easylist/easyprivacy.txt";
 const store = new Store();
 
-// Function to download a list
-async function downloadList(url, filePath) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          fs.writeFileSync(filePath, data);
-          resolve();
-        });
-        res.on("error", (err) => {
-          if (fs.existsSync(filePath)) {
-            resolve(); // If file exists, resolve the promise
-          } else {
-            reject(new Error("File not downloaded")); // If file does not exist, reject the promise
-          }
-        });
-      })
-      .on("error", (err) => {
-        if (fs.existsSync(filePath)) {
-          resolve(); // If file exists, resolve the promise
-        } else {
-          reject(
-            new Error(
-              "Please Connect to Internet! No adblock files were found!",
-            ),
-          ); // If file does not exist, reject the promise
-        }
-      });
-  });
-}
-
-function loadState() {
-  try {
-    const stateJSON = fs.readFileSync(stateFilePath, "utf-8");
-    return JSON.parse(stateJSON);
-  } catch (err) {
-    // If the file doesn't exist or is not valid JSON, return a default state
-    return { adblockerEnabled: true };
-  }
-}
-
-// Function to save the state
-function saveState(state) {
-  const stateJSON = JSON.stringify(state);
-  fs.writeFileSync(stateFilePath, stateJSON);
-}
-
-function showDownloads() {
-  const files = downloadedFiles.map((file) => file.label).join("\n");
-  const progress = downloads
-    .map((download) => {
-      const totalBytes = download.getTotalBytes();
-      const receivedBytes = download.getReceivedBytes();
-      const progress = receivedBytes / totalBytes;
-      const speed = receivedBytes / (download.getStartTime() / 1000); // bytes per second
-      return `${download.getFilename()}: ${Math.round(
-        progress * 100,
-      )}% complete, ${Math.round(speed)} B/s`;
-    })
-    .join("\n");
-  dialog.showMessageBox({
-    type: "info",
-    title: "Download Progress",
-    message: "Here is the progress of your downloads:\n\n" + progress,
-    buttons: ["OK"],
-  });
-}
-
-let { adblockerEnabled } = loadState();
+let { adblockerEnabled } = store.get("adBlockerState")
+  ? store.get("adBlockerState")
+  : true;
 
 async function createWindow() {
   async function blockerX() {
     let blocker;
     try {
-      // Download the lists
-      await downloadList(easyListURL, listFilePath);
-      await downloadList(easyPrivacyURL, privacyFilePath);
-
-      const listData = await fs.readFileSync(listFilePath, "utf-8");
-      const privacyData = await fs.readFileSync(privacyFilePath, "utf-8");
-      blocker = await ElectronBlocker.parse(listData);
+      blocker = ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+  path: 'engine.bin',
+  read: fs.readFile,
+  write: fs.writeFile,
+});
     } catch (err) {
-      dialog.showErrorBox("Error", err.message);
+      dialog.showErrorBox("Error", "Cannot fetch block list.");
       console.log(err);
       return;
     }
@@ -133,10 +53,11 @@ async function createWindow() {
             contextIsolation: true, // protect against prototype pollution.
             enableRemoteModule: false, // turn off remote module.
             sandbox: true,
-            preload: __dirname + "/preload.js", // use a preload script.
           },
         });
-        blocker.enableBlockingInSession(win.webContents.session);
+        if (store.get("adBlockerState") === true) {
+          blocker.enableBlockingInSession(win.webContents.session);
+        }
         win.loadURL(r);
 
         win.on("closed", () => {
@@ -216,26 +137,30 @@ async function createWindow() {
               {
                 label: "Enable",
                 type: "checkbox",
-                checked: adblockerEnabled,
+                checked: store.get("adBlockerState"),
                 click(menuItem) {
                   if (!adblockerEnabled) {
                     blocker.enableBlockingInSession(session.defaultSession);
                     adblockerEnabled = !adblockerEnabled;
-                    saveState({ adblockerEnabled });
+                    store.set("adBlockerState", adblockerEnabled);
                     menuItem.menu.items[1].checked = false;
+                  } else {
+                    menuItem.menu.items[0].checked = true;
                   }
                 },
               },
               {
                 label: "Disable",
                 type: "checkbox",
-                checked: !adblockerEnabled,
+                checked: !store.get("adBlockerState"),
                 click(menuItem) {
                   if (adblockerEnabled) {
                     blocker.disableBlockingInSession(session.defaultSession);
                     adblockerEnabled = !adblockerEnabled;
-                    saveState({ adblockerEnabled });
+                    store.set("adBlockerState", adblockerEnabled);
                     menuItem.menu.items[0].checked = false;
+                  } else {
+                    menuItem.menu.items[1].checked = true;
                   }
                 },
               },
