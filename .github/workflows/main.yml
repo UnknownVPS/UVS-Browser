@@ -20,7 +20,8 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo dpkg --add-architecture i386 && sudo apt install -y wine64 wine32 && npm i --include-dev
+          sudo dpkg --add-architecture i386 && sudo apt update && wget -qO- https://dl.winehq.org/wine-builds/winehq.key | sudo apt-key add -
+          sudo apt install software-properties-common && sudo apt-add-repository "deb https://dl.winehq.org/wine-builds/ubuntu/ $(lsb_release -cs) main" && sudo apt update && sudo apt install --install-recommends winehq-stable && npm i --include-dev          
       - name: Build
         run: |
           npm run make && npx electron-builder -w
