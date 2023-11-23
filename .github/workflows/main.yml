@@ -23,7 +23,7 @@ jobs:
           npm i --include-dev
       - name: Build
         run: |
-          npm run make
+          npm run make && npx electron-builder -w
       - name: "Release" 
         run: |
           echo "done!"
@@ -37,3 +37,4 @@ jobs:
           files: |
             out/make/*/*/*
             out/make/*.AppImage
+            dist/*.exe
