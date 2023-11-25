@@ -24,7 +24,7 @@ jobs:
           sudo apt install software-properties-common && sudo apt-add-repository "deb https://dl.winehq.org/wine-builds/ubuntu/ $(lsb_release -cs) main" && sudo apt update && sudo apt install --install-recommends winehq-stable && npm i --include-dev          
       - name: Build
         run: |
-          npm run make && zip -r linux_unpacked.zip *-linux-x64 && mkdir -p win && cp -r node_modules win/node_modules && cp main.js win/main.js && cp package.json win/package.json && cd win && npx electron-builder -w -p never
+          npm run make && zip -r linux_unpacked.zip out/*-linux-x64 && mkdir -p win && cp -r node_modules win/node_modules && cp main.js win/main.js && cp package.json win/package.json && cd win && npx electron-builder -w -p never
       - name: "Release" 
         run: |
           echo "done!"
@@ -39,3 +39,4 @@ jobs:
             out/make/*/*/*
             out/make/*.AppImage
             win/dist/*.exe
+            linux_unpacked.zip
