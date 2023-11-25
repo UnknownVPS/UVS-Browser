@@ -1,7 +1,7 @@
 {
   "name": "UVS_Browser",
   "productName": "UVS_Browser",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "Electron based Browser for increasing browsing speed while including support modern day tools.",
   "homepage": "https://github.com/unknownpersonog",
   "main": "main.js",
