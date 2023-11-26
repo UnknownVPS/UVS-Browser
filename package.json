@@ -1,7 +1,7 @@
 {
   "name": "UVS_Browser",
   "productName": "UVS_Browser",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Electron based Browser for increasing browsing speed while including support modern day tools.",
   "homepage": "https://github.com/unknownpersonog",
   "main": "main.js",
@@ -42,7 +42,6 @@
     "electron": "^27.1.0",
     "electron-builder": "^24.6.4",
     "electron-forge-maker-appimage": "github:Marcus10110/electron-forge-maker-appimage",
-    "electron-packager": "^17.1.2",
     "yarn": "^1.22.21"
   }
 }

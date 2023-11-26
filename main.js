@@ -18,9 +18,9 @@ const fs = require("fs").promises;
 let win;
 const store = new Store();
 
-let { adblockerEnabled } = store.get("adBlockerState")
-  ? store.get("adBlockerState")
-  : true;
+if (!store.get("adBlockerState")) {
+  store.set("adBlockerState", true);
+}
 
 let blocker; // Declare blocker outside of createWindow function
 let views = [];
@@ -29,9 +29,6 @@ async function askPrompt() {
     title: "Enter URL",
     label: "URL:",
     value: "https://google.com",
-    inputAttrs: {
-      type: "url",
-    },
     type: "input",
   }).then((r) => {
     if (r === null) {
@@ -42,6 +39,7 @@ async function askPrompt() {
     }
   });
 }
+
 async function createWindow() {
   // Only create a new blocker if one doesn't already exist
   if (!blocker) {
@@ -78,7 +76,9 @@ async function createWindow() {
   url ? createTab(url) : app.quit();
 
   updateMenu(); // Initial menu setup
-
+  if (store.get("adBlockerState") === true) {
+    blocker.enableBlockingInSession(session.defaultSession);
+  }
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
       app.quit();
@@ -92,8 +92,8 @@ async function createWindow() {
   });
 }
 
-let activeViewIndex = 0; 
-
+let activeViewIndex = 0;
+let downloadItem;
 function createTab(url) {
   if (views.length >= 5) {
     dialog.showErrorBox("Error", "Cannot open more than 5 tabs.");
@@ -127,7 +127,88 @@ function createTab(url) {
 
   view.webContents.on("page-title-updated", (event, title) => {
     win.setTitle(title);
+    updateMenu();
   });
+
+  view.webContents.session.on("will-download", (event, item, webContents) => {
+    downloadItem = item; // Store the download item
+
+    // Create a new progress bar
+    let progressBar = new ProgressBar({
+      indeterminate: false,
+      text: "Downloading...",
+      detail: "Wait...",
+    });
+    progressBar
+      .on("completed", function () {
+        progressBar.detail = "Task completed. Exiting...";
+      })
+      .on("aborted", function (value) {
+        console.info(`Progress bar closed at ${value}`);
+        dialog.showMessageBox({
+          title: "Progress Bar Closed",
+          message: "Please use menu to track progress!",
+        });
+      })
+      .on("progress", function (value) {
+        progressBar.detail = `Downloaded ${value.toFixed(
+          2,
+        )} out of ${progressBar
+          .getOptions()
+          .maxValue.toFixed(
+            2,
+          )}...\n To pause or cancel download check the menu!`;
+      });
+
+    item.on("updated", (event, state) => {
+      if (state === "interrupted") {
+        dialog.showMessageBox({
+          type: "info",
+          title: "Info",
+          message: "Download is interrupted but can be resumed",
+        });
+      } else if (state === "progressing") {
+        if (item.isPaused()) {
+          progressBar.detail =
+            "Download paused. Check the menu to resume or cancel.";
+        } else {
+          // Update the progress bar value
+          let totalBytes = item.getTotalBytes();
+          if (totalBytes > 0) {
+            let progress = (item.getReceivedBytes() / totalBytes) * 100;
+            progressBar.value = progress;
+          } else {
+            // If totalBytes is not available, switch to indeterminate mode
+            progressBar.options.indeterminate = true;
+          }
+        }
+      }
+    });
+
+    item.once("done", (event, state) => {
+      if (state === "completed") {
+        progressBar.setCompleted();
+        let downloadHistory = store.get("downloadHistory") || [];
+        downloadHistory.push({
+          url: item.getURL(),
+          filename: item.getFilename(),
+          fileSize: item.getTotalBytes(),
+        });
+        store.set("downloadHistory", downloadHistory);
+      } else {
+        dialog.showErrorBox("Error", `Download failed: ${state}`);
+        progressBar.close();
+      }
+    });
+  });
+
+  view.webContents.on("did-fail-load", (event, errorCode, errorDescription) => {
+    console.error(
+      "Oops! Something went wrong!",
+      "Error Code: " + errorCode + " : " + errorDescription,
+    );
+  });
+
   return view;
 }
 
@@ -169,19 +250,22 @@ function changeTab(index) {
   const size = win.getContentSize();
   view.setBounds({ x: 0, y: 0, width: size[0], height: size[1] });
   win.setBrowserView(views[index]);
-
+  const title = view.webContents.getTitle();
+  win.setTitle(title);
   activeViewIndex = index; // Update the active view index here
 }
 
 function updateMenu() {
   const tabsMenu = views.map((view, index) => ({
-    label: `Tab ${index + 1}`,
-    accelerator: process.platform === "darwin" ? `Command+${index + 1}` : `Ctrl+${index + 1}`,
+    label: `${view.webContents.getTitle()}`,
+    accelerator:
+      process.platform === "darwin"
+        ? `Command+${index + 1}`
+        : `Ctrl+${index + 1}`,
     click() {
       changeTab(index);
     },
   }));
-
   const tabsCloseMenu = views.map((view, index) => ({
     label: `Tab ${index + 1}`,
     click() {
@@ -220,6 +304,137 @@ function updateMenu() {
             {
               label: "Switch to Tab",
               submenu: tabsMenu,
+            },
+          ],
+        },
+        {
+          label: "Adblocker",
+          submenu: [
+            {
+              label: "Enable",
+              type: "radio",
+              checked: store.get("adBlockerState"),
+              click(menuItem) {
+                if (!store.get("adBlockerState")) {
+                  blocker.enableBlockingInSession(session.defaultSession);
+                  store.set("adBlockerState", !store.get("adBlockerState"));
+                }
+              },
+            },
+            {
+              label: "Disable",
+              type: "radio",
+              checked: !store.get("adBlockerState"),
+              click(menuItem) {
+                if (store.get("adBlockerState")) {
+                  blocker.disableBlockingInSession(session.defaultSession);
+                  store.set("adBlockerState", !store.get("adBlockerState"));
+                }
+              },
+            },
+          ],
+        },
+        {
+          label: "Download",
+          submenu: [
+            {
+              label: "Show Download History",
+              accelerator: process.platform === "darwin" ? "Command+J" : "Ctrl+J",
+              click() {
+                let downloadHistory = store.get("downloadHistory");
+                let message = "Download History:\n";
+                downloadHistory.forEach((download, index) => {
+                  message += `${index + 1}. ${download.filename} (${(
+                    download.fileSize /
+                    (1000 * 1000)
+                  ).toFixed(2)}MB)\n`;
+                });
+
+                dialog
+                  .showMessageBox({
+                    type: "info",
+                    title: "Download History",
+                    message: message,
+                    buttons: ["OK", "Copy URL"],
+                  })
+                  .then((result) => {
+                    if (result.response === 1) {
+                      // If 'Copy URL' button is clicked
+                      // Create an options object for the dropdown menu
+                      let options = {};
+                      downloadHistory.forEach((download, index) => {
+                        options[index] = `${download.filename} (${(
+                          download.fileSize /
+                          (1000 * 1000)
+                        ).toFixed(2)}MB)`;
+                      });
+
+                      prompt({
+                        title: "Copy URL",
+                        label: "Select a download:",
+                        type: "select",
+                        selectOptions: options,
+                      }).then((result) => {
+                        if (result !== null) {
+                          let index = parseInt(result);
+                          clipboard.writeText(downloadHistory[index].url);
+                        }
+                      });
+                    }
+                  });
+              },
+            },
+            {
+              label: "Pause/Resume Download",
+              click() {
+                if (downloadItem) {
+                  if (downloadItem.isPaused()) {
+                    downloadItem.resume();
+                  } else {
+                    downloadItem.pause();
+                  }
+                }
+              },
+            },
+            {
+              label: "Show Progress",
+              click() {
+                let progress =
+                  (downloadItem.getReceivedBytes() /
+                    downloadItem.getTotalBytes()) *
+                  100;
+                dialog.showMessageBox({
+                  title: "Current Progress",
+                  message: `${progress.toFixed(
+                    2,
+                  )}% Completed \n Reopen to track new progress! `,
+                });
+              },
+            },
+            {
+              label: "Cancel Download",
+              click() {
+                if (downloadItem) {
+                  downloadItem.cancel();
+                }
+              },
+            },
+          ],
+        },
+
+        {
+          label: "Help",
+          submenu: [
+            {
+              label: "About",
+              click() {
+                dialog.showMessageBox({
+                  type: "info",
+                  title: "About",
+                  message: `Version: 0.0.5!\nThis is a browser developed by UnknownVPS using Electron.`,
+                  buttons: ["OK"],
+                });
+              },
             },
           ],
         },
@@ -297,74 +512,33 @@ function updateMenu() {
       ],
     },
     {
-      label: "Adblocker",
-      submenu: [
-        {
-          label: "Enable",
-          type: "checkbox",
-          checked: store.get("adBlockerState"),
-          click(menuItem) {
-            if (!adblockerEnabled) {
-              blocker.enableBlockingInSession(session.defaultSession);
-              adblockerEnabled = !adblockerEnabled;
-              store.set("adBlockerState", adblockerEnabled);
-              menuItem.menu.items[1].checked = false;
-            } else {
-              menuItem.menu.items[0].checked = true;
-            }
-          },
-        },
-        {
-          label: "Disable",
-          type: "checkbox",
-          checked: !store.get("adBlockerState"),
-          click(menuItem) {
-            if (adblockerEnabled) {
-              blocker.disableBlockingInSession(session.defaultSession);
-              adblockerEnabled = !adblockerEnabled;
-              store.set("adBlockerState", adblockerEnabled);
-              menuItem.menu.items[0].checked = false;
-            } else {
-              menuItem.menu.items[1].checked = true;
-            }
-          },
-        },
-      ],
+      type: "separator",
     },
     {
-      label: "Download",
-      submenu: [
-        {
-          label: "Show Download History",
-          click() {
-            dialog.showMessageBox({
-              message:
-                "Download history: " +
-                JSON.stringify(store.get("downloadHistory")),
-            });
-          },
-        },
-      ],
-    },
-
-    {
-      label: "Help",
-      submenu: [
-        {
-          label: "About",
-          click() {
-            dialog.showMessageBox({
-              type: "info",
-              title: "About",
-              message: `Version: 0.0.4!\nThis is a browser developed by UnknownVPS using Electron.`,
-              buttons: ["OK"],
-            });
-          },
-        },
-      ],
+      label: "Tabs:",
     },
   ];
+  if (views.length >= 1) {
+    for (let index = 0; index < views.length; index++) {
+      template.push({
+        label: tabsMenu[index].label.substring(0, 10),
+        click() {
+          changeTab(index);
+        },
+      });
 
+      template.push({
+        label: "×",
+        click() {
+          closeTab(index);
+        },
+      });
+
+      template.push({
+        type: "separator",
+      });
+    }
+  }
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
@@ -382,3 +556,4 @@ app.on("activate", () => {
     createWindow();
   }
 });
+
